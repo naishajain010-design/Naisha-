@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Microfluidic based Sepsis detection system</title>
+<style>
+:root{color-scheme:light;--bg:#f3f6fb;--card:#fff;--tx:#1b2430;--mu:#64707f;--bd:#dfe5ee;--ac:#1d6fd8;--lo:#1f9d55;--mid:#d89a00;--hi:#d6372e;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*{box-sizing:border-box}html,body{margin:0}
+body{background:var(--bg);color:var(--tx);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:16px}
+.top{background:linear-gradient(120deg,#1d6fd8,#3aa0ff);color:#fff;border-radius:14px;padding:18px;max-width:1150px;margin:0 auto 14px}
+.top h1{margin:0;font-size:22px}.top p{margin:4px 0 0;opacity:.92;font-size:13px}
+.wrap{max-width:1150px;margin:auto}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px;margin-bottom:14px;box-shadow:0 1px 3px rgba(20,40,80,.05)}
+.card h2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--mu);margin:0 0 10px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:14px}@media(max-width:800px){.row{grid-template-columns:1fr}}
+#drop{border:2px dashed #b8c6da;border-radius:10px;padding:22px;text-align:center;color:var(--mu);cursor:pointer;background:#f9fbff}
+#drop.on{border-color:var(--ac);background:#eef5ff}
+label{display:block;font-size:13px;color:var(--mu);margin-top:8px}input[type=range]{width:100%}
+input[type=number]{width:100%;padding:6px;border:1px solid var(--bd);border-radius:6px;background:#fff;color:var(--tx)}
+button{background:var(--ac);color:#fff;border:0;border-radius:8px;padding:8px 12px;font-size:13px;cursor:pointer;margin:6px 4px 0 0}
+button.g{background:#fff;color:var(--tx);border:1px solid var(--bd)}
+table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:7px 5px;border-bottom:1px solid var(--bd);white-space:nowrap}
+th{color:var(--mu);font-weight:600}.ov{overflow-x:auto}
+.sw{display:inline-block;width:18px;height:18px;border-radius:5px;vertical-align:middle;border:1px solid var(--bd)}
+.pill{color:#fff;border-radius:6px;padding:2px 9px;font-weight:700;font-size:12px}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:14px}
+.cards .card{margin:0}canvas{width:100%;border-radius:8px;display:block;background:#eef2f8}
+.big{font-size:26px;font-weight:800;margin:10px 0 2px}.small{font-size:12px;color:var(--mu)}
+.bar{height:10px;border-radius:5px;background:linear-gradient(90deg,var(--lo),var(--mid),var(--hi));position:relative;margin:12px 0 4px}
+.bar i{position:absolute;top:-4px;width:4px;height:18px;background:var(--tx);border-radius:2px}
+.t{display:flex;justify-content:space-between;align-items:center;gap:8px}.t b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+</style>
+</head>
+<body>
+<div class="top"><h1>🧪 Microfluidic based Sepsis detection system</h1><p>Upload one or many chip images → computer vision finds the coloured reservoirs → RGB and colour score → estimated procalcitonin (PCT) → Low / Mid / High classification.</p></div>
+<div class="wrap">
+<div class="row">
+ <div class="card"><h2>1 · Upload images (multiple allowed)</h2>
+  <label id="drop" for="file" style="display:block;margin:0;font-size:15px">Drop one or more images here, or click to choose</label><input id="file" type="file" accept="image/*" multiple style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
+  <button class="g" onclick="S=[];render()">Clear all</button></div>
+ <div class="card"><h2>2 · Settings and calibration</h2>
+  <label>Detection sensitivity (ΔE &gt; <b id="vT">18</b>)<input id="T" type="range" min="8" max="50" value="18"></label>
+  <label>Low / Mid boundary (ΔE <b id="vL">30</b>) ≙ PCT 0.5 ng/mL<input id="L" type="range" min="5" max="100" value="30"></label>
+  <label>Mid / High boundary (ΔE <b id="vH">50</b>) ≙ PCT 2 ng/mL<input id="H" type="range" min="5" max="120" value="50"></label>
+  <div class="small" style="margin-top:8px">Enter the known PCT (ng/mL) in each sample card, then press the button. With 2+ samples the curve is fitted automatically.</div>
+  <button onclick="calib()">Calibrate from known values</button><button class="g" onclick="resetCal()">Reset</button>
+  <div class="small" id="cmsg" style="margin-top:6px"></div></div>
+</div>
+<div class="card"><h2>Results summary</h2><div class="ov"><table><thead><tr><th></th><th>Sample</th><th>Regions</th><th>Avg RGB</th><th>HEX</th><th>Score ΔE</th><th>Est. PCT (ng/mL)</th><th>Class</th></tr></thead><tbody id="sum"><tr><td colspan="8" class="small">No images yet</td></tr></tbody></table></div></div>
+<div class="cards" id="cards"></div>
+<div class="card" style="margin-top:14px"><h2>Classification guide (PCT)</h2>
+ <div class="small" style="font-size:13px"><b style="color:var(--lo)">● LOW &lt; 0.5 ng/mL</b> – sepsis unlikely, low risk<br><b style="color:var(--mid)">● MID 0.5 – 2 ng/mL</b> – sepsis possible, moderate risk; re-test in 6–24 h<br><b style="color:var(--hi)">● HIGH ≥ 2 ng/mL</b> – sepsis likely, high risk (≥ 10: severe sepsis / septic shock likely)<br><br>Research prototype, not a diagnostic device. Uncalibrated values are only rough estimates. Keep lighting and camera the same for every photo, and confirm with a validated lab test and clinical assessment.</div></div>
+</div>
+<script>
+const $=id=>document.getElementById(id),LN=Math.log;let S=[];const MAXW=420;
+function toLab(r,g,b){const f=c=>{c/=255;return c>.04045?Math.pow((c+.055)/1.055,2.4):c/12.92};const R=f(r),G=f(g),B=f(b);let x=(R*.4124+G*.3576+B*.1805)/.95047,y=R*.2126+G*.7152+B*.0722,z=(R*.0193+G*.1192+B*.9505)/1.08883;const h=t=>t>.008856?Math.cbrt(t):7.787*t+16/116;x=h(x);y=h(y);z=h(z);return[116*y-16,500*(x-y),200*(y-z)]}
+const dE=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1],a[2]-b[2]);
+const hex=c=>'#'+c.map(v=>Math.round(v).toString(16).padStart(2,'0')).join('');
+const pctOf=s=>{const L=+$('L').value,H=+$('H').value;return .5*Math.exp(LN(4)/(H-L)*(s-L))};
+const cls=s=>s<+$('L').value?'LOW':s<+$('H').value?'MID':'HIGH';
+const COL={LOW:'#1f9d55',MID:'#d89a00',HIGH:'#d6372e'};
+const fmt=p=>p<.05?'< 0.05':p>50?'> 50':p.toFixed(2);
+const interp=(c,p)=>c=='LOW'?'Sepsis unlikely (PCT < 0.5)':c=='MID'?'Sepsis possible – moderate risk (PCT 0.5–2)':p>=10?'Severe sepsis / septic shock likely (PCT ≥ 10)':'Sepsis likely – high risk (PCT ≥ 2)';
+
+const drop=$('drop'),file=$('file');
+['dragover','dragenter'].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.classList.add('on')}));
+['dragleave','drop'].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.classList.remove('on')}));
+['dragover','drop'].forEach(e=>document.addEventListener(e,ev=>{ev.preventDefault();if(e=='drop'){drop.classList.remove('on');const dt=ev.dataTransfer;let fs=[...dt.files];if(!fs.length)fs=[...dt.items].map(i=>i.getAsFile()).filter(Boolean);load(fs)}}));
+file.onchange=()=>{load(file.files);file.value=''};
+function load(fs){[...fs].filter(f=>f.type.startsWith('image/')).forEach(f=>{const im=new Image();im.onload=()=>{const s={name:f.name,im,known:''};analyze(s);S.push(s);render()};const r=new FileReader();r.onload=()=>{im.src=r.result};r.readAsDataURL(f)})}
+['T','L','H'].forEach(k=>$(k).oninput=()=>{$('v'+k).textContent=Math.round($(k).value);if(k=='T')S.forEach(analyze);render()});
+
+function analyze(s){
+ const sc=Math.min(1,MAXW/s.im.width),w=Math.round(s.im.width*sc),h=Math.round(s.im.height*sc);
+ const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d',{willReadFrequently:true});x.drawImage(s.im,0,0,w,h);
+ const img=x.getImageData(0,0,w,h),d=img.data,m=Math.max(3,Math.round(Math.min(w,h)*.05)),ch=[[],[],[]];
+ for(let y=0;y<h;y++)for(let i=0;i<w;i++)if(i<m||y<m||i>=w-m||y>=h-m){const k=(y*w+i)*4;for(let q=0;q<3;q++)ch[q].push(d[k+q])}
+ const bg=ch.map(a=>{a.sort((p,q)=>p-q);return a[a.length>>1]}),bl=toLab(...bg),T=+$('T').value,N=w*h,de=new Float32Array(N),mask=new Uint8Array(N);
+ for(let i=0;i<N;i++){de[i]=dE(toLab(d[i*4],d[i*4+1],d[i*4+2]),bl);const px=i%w,py=i/w|0;if(de[i]>T&&px>m&&py>m&&px<w-m&&py<h-m)mask[i]=1}
+ const seen=new Uint8Array(N);let bl2=[];const minA=N*.002;
+ for(let i=0;i<N;i++){if(!mask[i]||seen[i])continue;const st=[i];seen[i]=1;let n=0,sr=0,sg=0,sb=0,sd=0,x0=w,y0=h,x1=0,y1=0;
+  while(st.length){const p=st.pop(),px=p%w,py=p/w|0;n++;sr+=d[p*4];sg+=d[p*4+1];sb+=d[p*4+2];sd+=de[p];if(px<x0)x0=px;if(px>x1)x1=px;if(py<y0)y0=py;if(py>y1)y1=py;
+   for(const q of[p-1,p+1,p-w,p+w])if(q>=0&&q<N&&mask[q]&&!seen[q]&&Math.abs(q%w-px)<=1){seen[q]=1;st.push(q)}}
+  if(n>=minA)bl2.push({n,rgb:[sr/n,sg/n,sb/n],de:sd/n,x0,y0,x1,y1})}
+ bl2.sort((a,b)=>b.n-a.n);bl2=bl2.slice(0,8);bl2.forEach((b,i)=>b.name='R'+(i+1));
+ s.img=img;s.w=w;s.h=h;s.blobs=bl2;s.bg=bg;
+ if(bl2.length){s.score=bl2.reduce((a,b)=>a+b.de,0)/bl2.length;s.rgb=[0,1,2].map(q=>bl2.reduce((a,b)=>a+b.rgb[q],0)/bl2.length)}else{s.score=0;s.rgb=null}}
+
+function render(){
+ $('sum').innerHTML=S.length?S.map(s=>{const p=pctOf(s.score),c=cls(s.score);s.cls=c;s.p=p;
+  return`<tr><td>${s.rgb?`<span class="sw" style="background:${hex(s.rgb)}"></span>`:''}</td><td>${s.name}</td><td>${s.blobs.length}</td><td>${s.rgb?s.rgb.map(Math.round).join(', '):'–'}</td><td>${s.rgb?hex(s.rgb):'–'}</td><td>${s.score.toFixed(1)}</td><td><b>${fmt(p)}</b></td><td><span class="pill" style="background:${COL[c]}">${c}</span></td></tr>`}).join(''):'<tr><td colspan="8" class="small">No images yet</td></tr>';
+ $('cards').innerHTML=S.map((s,i)=>{const c=s.cls,p=s.p,pos=Math.min(98,s.score/(+$('H').value*1.5)*100);
+  return`<div class="card"><div class="t"><b>${s.name}</b><button class="g" style="margin:0" onclick="S.splice(${i},1);render()">✕</button></div><canvas id="c${i}"></canvas>
+  <div class="big" style="color:${COL[c]}">${c} · ${fmt(p)} ng/mL</div><div style="font-weight:600;color:${COL[c]}">${interp(c,p)}</div>
+  <div class="bar"><i style="left:${pos}%"></i></div>
+  <div class="small">Avg RGB: ${s.rgb?`<span class="sw" style="background:${hex(s.rgb)}"></span> ${s.rgb.map(Math.round).join(', ')} (${hex(s.rgb)})`:'none detected – lower sensitivity'} · ΔE ${s.score.toFixed(1)}</div>
+  <div class="ov"><table style="margin-top:6px"><tbody>${s.blobs.map(b=>`<tr><td><span class="sw" style="background:${hex(b.rgb)}"></span></td><td>${b.name}</td><td>${b.rgb.map(Math.round).join(', ')}</td><td>ΔE ${b.de.toFixed(1)}</td><td style="color:${COL[cls(b.de)]};font-weight:700">${cls(b.de)}</td></tr>`).join('')}</tbody></table></div>
+  <label>Known PCT (ng/mL), optional<input type="number" step="0.01" min="0.01" value="${s.known}" oninput="S[${i}].known=this.value"></label></div>`}).join('');
+ S.forEach((s,i)=>{const cv=$('c'+i);cv.width=s.w;cv.height=s.h;const x=cv.getContext('2d');x.putImageData(s.img,0,0);x.lineWidth=2;x.font='bold 11px sans-serif';
+  s.blobs.forEach(b=>{x.strokeStyle=COL[cls(b.de)];x.strokeRect(b.x0-2,b.y0-2,b.x1-b.x0+4,b.y1-b.y0+4);x.fillStyle='#000';x.fillText(b.name,b.x0,Math.max(10,b.y0-5))})})}
+
+function calib(){const pts=S.filter(s=>parseFloat(s.known)>0&&s.rgb).map(s=>[s.score,LN(parseFloat(s.known))]);
+ if(pts.length<2){$('cmsg').textContent='Enter known PCT values for at least 2 samples with different colours.';return}
+ const n=pts.length,sx=pts.reduce((a,p)=>a+p[0],0),sy=pts.reduce((a,p)=>a+p[1],0),sxx=pts.reduce((a,p)=>a+p[0]*p[0],0),sxy=pts.reduce((a,p)=>a+p[0]*p[1],0),b=(n*sxy-sx*sy)/(n*sxx-sx*sx),a=(sy-b*sx)/n;
+ if(!isFinite(b)||b<=0){$('cmsg').textContent='Could not fit: higher PCT must give a stronger colour (higher ΔE).';return}
+ $('L').value=(LN(.5)-a)/b;$('H').value=(LN(2)-a)/b;$('vL').textContent=Math.round($('L').value);$('vH').textContent=Math.round($('H').value);
+ $('cmsg').textContent='Calibrated with '+n+' samples: PCT = '+Math.exp(a).toFixed(3)+' × e^('+b.toFixed(3)+' × ΔE)';render()}
+function resetCal(){$('L').value=30;$('H').value=50;$('vL').textContent=30;$('vH').textContent=50;$('cmsg').textContent='';render()}
+</script>
+</body>
+</html>
